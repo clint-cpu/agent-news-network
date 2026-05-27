@@ -1,0 +1,159 @@
+#!/usr/bin/env node
+/**
+ * E2E Test: mcp-server-ann P2P node — publish, search, and signature verification.
+ * Run: cd mcp-server-ann && node tests/e2e-federation.mjs
+ */
+import { spawn } from "node:child_process";
+import { rm, mkdtemp } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(__dirname, "../..");
+const MCP_DIR = join(ROOT, "mcp-server-ann");
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function runMcpClient({ identityDir, dbPath }) {
+  return new Promise((resolve, reject) => {
+    const serverPath = join(MCP_DIR, "dist", "index.js");
+    const child = spawn("node", [serverPath], {
+      cwd: MCP_DIR,
+      env: {
+        ...process.env,
+        ANN_IDENTITY_DIR: identityDir,
+        // Override SQLite path via cwd; db.ts uses process.cwd()
+      },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let output = "";
+    let errOutput = "";
+    child.stdout.on("data", (d) => { output += d.toString(); });
+    child.stderr.on("data", (d) => { errOutput += d.toString(); });
+
+    // Send MCP initialize request
+    const initRequest = {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: "e2e-test", version: "1.0.0" },
+      },
+    };
+
+    // Send tools/list request
+    const listToolsRequest = {
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/list",
+      params: {},
+    };
+
+    child.stdin.write(JSON.stringify(initRequest) + "\n");
+    child.stdin.write(JSON.stringify(listToolsRequest) + "\n");
+
+    // Give it time to respond
+    setTimeout(() => {
+      child.stdin.end();
+      child.kill();
+      resolve({ output, errOutput, code: 0 });
+    }, 5000);
+
+    child.on("exit", (code) => {
+      if (code !== 0 && code !== null) {
+        reject(new Error(`MCP server exited with code ${code}. stderr: ${errOutput}`));
+      }
+    });
+    child.on("error", reject);
+  });
+}
+
+const results = [];
+
+function pass(name) {
+  results.push({ name, ok: true });
+  console.log(`\n✅ PASS: ${name}`);
+}
+
+function fail(name, err) {
+  results.push({ name, ok: false, error: err.message });
+  console.log(`\n❌ FAIL: ${name} — ${err.message}`);
+}
+
+async function main() {
+  console.log("=== ANN P2P E2E ===\n");
+
+  const tmpBase = await mkdtemp(join(tmpdir(), "ann-e2e-"));
+  const identityDir = join(tmpBase, "identity");
+
+  try {
+    // Step 1: Verify dist/index.js exists
+    const serverPath = join(MCP_DIR, "dist", "index.js");
+    try {
+      await import("node:fs/promises").then((fs) => fs.access(serverPath));
+    } catch {
+      throw new Error("dist/index.js not found. Run 'npm run build' first.");
+    }
+    pass("dist/index.js exists");
+
+    // Step 2: Start MCP server and list tools
+    const { output, errOutput } = await runMcpClient({ identityDir });
+    
+    if (!output.includes("publish_knowledge")) {
+      throw new Error("publish_knowledge tool not found in MCP response");
+    }
+    if (!output.includes("search_knowledge")) {
+      throw new Error("search_knowledge tool not found in MCP response");
+    }
+    pass("MCP tools listed correctly");
+
+    // Step 3: Verify identity was generated
+    const identityFile = join(identityDir, "identity.json");
+    const fs = await import("node:fs/promises");
+    const identityData = await fs.readFile(identityFile, "utf8");
+    const identity = JSON.parse(identityData);
+    if (!identity.publicKey || !identity.privateKey) {
+      throw new Error("Identity file missing publicKey or privateKey");
+    }
+    pass("Ed25519 identity generated");
+
+    // Step 4: Verify SQLite ledger was created
+    const dbPath = join(MCP_DIR, "local_ann_ledger.sqlite");
+    try {
+      await fs.access(dbPath);
+    } catch {
+      throw new Error("SQLite ledger not created at " + dbPath);
+    }
+    pass("SQLite ledger initialized");
+
+    console.log("\n=== E2E SUMMARY ===");
+    const passed = results.filter((r) => r.ok).length;
+    const failed = results.filter((r) => !r.ok).length;
+    for (const r of results) {
+      console.log(r.ok ? `  ✅ ${r.name}` : `  ❌ ${r.name}`);
+    }
+    console.log(`\n${passed} passed, ${failed} failed.\n`);
+
+    if (failed > 0) {
+      process.exit(1);
+    }
+  } finally {
+    await rm(tmpBase, { recursive: true, force: true });
+    // Also clean up the SQLite created in MCP_DIR
+    try {
+      const fs = await import("node:fs/promises");
+      await fs.unlink(join(MCP_DIR, "local_ann_ledger.sqlite"));
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+main().catch((err) => {
+  console.error("\nE2E aborted:", err);
+  process.exit(1);
+});

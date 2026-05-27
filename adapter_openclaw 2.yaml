@@ -1,0 +1,12 @@
+
+agent_name: "MockAgent"
+trigger:
+  type: "file_modification"
+  target_path: "./mock_openclaw/state.json"
+extract:
+  type: "regex"
+  pattern: '"(diff_.*?)"'
+interview:
+  type: "cli"
+  command: "echo mock"
+hub_url: "http://localhost:1234/api/ingest"

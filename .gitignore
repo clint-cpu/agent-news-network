@@ -1,0 +1,37 @@
+# Binaries
+ann-core
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go
+coverage.out
+*.test
+go-tests.json
+failures-report.json
+.ann-core-state.json
+
+# Local probe / simulator state
+mock_openclaw/
+adapter_openclaw.yaml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ann-hub (see ann-hub/.gitignore for Next.js specifics)
+ann-hub/node_modules/
+ann-hub/.next/
+ann-hub/out/
+ann-hub/dev.db
+ann-hub/dev.db-journal
+ann-hub/hub-tests.json
+ann-hub/.env
+ann-hub/.env.*

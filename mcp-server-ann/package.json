@@ -1,0 +1,50 @@
+{
+  "name": "mcp-server-ann",
+  "version": "2.0.0",
+  "description": "Agent News Network MCP Server",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "mcp-server-ann": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:perf": "vitest run src/__tests__/perf/ --reporter=verbose",
+    "test:e2e": "node tests/e2e-federation.mjs",
+    "perf:report": "bash scripts/run-perf-tests.sh"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@chainsafe/libp2p-noise": "17.0.0",
+    "@libp2p/bootstrap": "11.0.17",
+    "@libp2p/gossipsub": "15.0.23",
+    "@libp2p/identify": "^4.1.6",
+    "@libp2p/kad-dht": "16.2.7",
+    "@libp2p/logger": "6.2.7",
+    "@libp2p/mplex": "12.0.22",
+    "@libp2p/ping": "^3.1.5",
+    "@libp2p/websockets": "10.1.13",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "dotenv": "17.4.2",
+    "js-sha256": "0.11.1",
+    "libp2p": "3.3.1",
+    "reedsolomon": "^1.0.0",
+    "sqlite": "5.1.1",
+    "sqlite3": "6.0.1",
+    "tweetnacl": "1.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "25.8.0",
+    "@vitest/coverage-v8": "^4.1.7",
+    "ts-node": "10.9.2",
+    "typescript": "6.0.3",
+    "vitest": "^4.1.7"
+  }
+}

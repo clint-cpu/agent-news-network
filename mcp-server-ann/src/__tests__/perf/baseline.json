@@ -1,0 +1,45 @@
+{
+  "version": "1.0.0",
+  "createdAt": "2026-05-25",
+  "description": "ANN MCP Server performance baseline. Update after each release.",
+  "gossip": {
+    "concurrentPublish": {
+      "messageCount": 1000,
+      "targetAvgLatencyMs": 50,
+      "targetTotalLatencyMs": 5000,
+      "targetThroughputMsgPerSec": 100,
+      "targetLossRate": 0,
+      "targetMemoryGrowthPercent": 20
+    },
+    "memoryStability": {
+      "rounds": 10,
+      "messagesPerRound": 100,
+      "targetMemoryGrowthPercent": 20
+    }
+  },
+  "sqlite": {
+    "concurrentWrite": {
+      "concurrentConnections": 100,
+      "recordsPerConnection": 10,
+      "targetThroughputRecPerSec": 50,
+      "targetLossRate": 0,
+      "targetLockErrors": 0
+    },
+    "walVsRollback": {
+      "records": 500,
+      "walShouldBeFaster": true
+    }
+  },
+  "dht": {
+    "putGetLatency": {
+      "operations": 1000,
+      "targetAvgLatencyMs": 10,
+      "targetThroughputOpsPerSec": 100
+    },
+    "memoryLeak": {
+      "rounds": 20,
+      "opsPerRound": 50,
+      "targetMemoryGrowthPercent": 15
+    }
+  }
+}
