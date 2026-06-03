@@ -11,6 +11,7 @@ import rs from 'reedsolomon';
 import crypto from 'crypto';
 import { insertGlobalIndex, getExpiredPublishedCids, deletePublishedCid } from './db.js';
 import { loadOrGenerateIdentity } from './identity.js';
+import { loadOrGeneratePeerPrivateKey } from './peer-identity.js';
 import nacl from 'tweetnacl';
 
 let node: Libp2p<any> | null = null;
@@ -48,8 +49,10 @@ export async function startP2PNode(mode: NodeMode = 'full'): Promise<Libp2p<any>
         '/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDuVkcruPhmqnQQxgqPtdVj2GZStN5GvSBAyQ7AWT',
         '/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa'
       ];
+  const privateKey = await loadOrGeneratePeerPrivateKey();
 
   node = await createLibp2p({
+    privateKey,
     addresses: {
       listen: listenAddrs 
     },
@@ -723,4 +726,3 @@ export async function dhtSweepExpired(node: Libp2p): Promise<{ deleted: number; 
     }
     return { deleted, checked: expiredCids.length };
 }
-
