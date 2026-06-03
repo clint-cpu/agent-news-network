@@ -54,7 +54,8 @@ export async function insertGlobalIndex(payload) {
     const database = await getDb();
     try {
         const artifactsJson = payload.artifacts ? JSON.stringify(payload.artifacts) : '[]';
-        await database.run(`INSERT OR IGNORE INTO global_index (cid, title, author_pubkey, signature, vector_json, status, related_cid, artifacts_json, timestamp, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [payload.cid, payload.title, payload.author_pubkey, payload.signature, payload.vector_json, payload.status || 'resolved', payload.related_cid || null, artifactsJson, payload.timestamp, payload.expires_at]);
+        const signature = payload.signature ?? payload.sig;
+        await database.run(`INSERT OR IGNORE INTO global_index (cid, title, author_pubkey, signature, vector_json, status, related_cid, artifacts_json, timestamp, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [payload.cid, payload.title, payload.author_pubkey, signature, payload.vector_json, payload.status || 'resolved', payload.related_cid || null, artifactsJson, payload.timestamp, payload.expires_at]);
     }
     catch (err) {
         console.error('[DB] Failed to insert global index:', err);
