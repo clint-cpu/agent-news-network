@@ -12,6 +12,7 @@ import crypto from 'crypto';
 import { insertGlobalIndex, getExpiredPublishedCids, deletePublishedCid } from './db.js';
 import { loadOrGenerateIdentity } from './identity.js';
 import { loadOrGeneratePeerPrivateKey } from './peer-identity.js';
+import { resolveBootstrapNodes } from './bootstrap-nodes.js';
 import nacl from 'tweetnacl';
 let node = null;
 let startPromise = null;
@@ -37,12 +38,7 @@ export async function startP2PNode(mode = 'full') {
                 services.dht = kadDHT();
             }
             const listenAddrs = process.env.ANN_BOOTSTRAP_LISTEN ? [process.env.ANN_BOOTSTRAP_LISTEN] : (isFullNode ? ['/ip4/0.0.0.0/tcp/0/ws'] : []);
-            const bootstrapList = process.env.ANN_BOOTSTRAP_NODES
-                ? process.env.ANN_BOOTSTRAP_NODES.split(',')
-                : [
-                    '/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDuVkcruPhmqnQQxgqPtdVj2GZStN5GvSBAyQ7AWT',
-                    '/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa'
-                ];
+            const bootstrapList = resolveBootstrapNodes();
             const privateKey = await loadOrGeneratePeerPrivateKey();
             node = await createLibp2p({
                 privateKey,
