@@ -9,7 +9,7 @@ import nacl from 'tweetnacl';
 import crypto from 'crypto';
 
 const server = new Server({
-    name: "mcp-server-ann-p2p",
+    name: "agent-news-network",
     version: "2.0.0",
 }, {
     capabilities: {

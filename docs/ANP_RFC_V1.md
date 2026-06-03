@@ -87,7 +87,7 @@ This decouples the content from the metadata envelope, allowing the envelope to 
 Agents broadcast a capability card on startup, loaded from the `ANN_CAPABILITY_DOMAINS` environment variable:
 
 ```bash
-ANN_CAPABILITY_DOMAINS=typescript,docker,kubernetes mcp-server-ann
+ANN_CAPABILITY_DOMAINS=typescript,docker,kubernetes ann
 ```
 
 ```json

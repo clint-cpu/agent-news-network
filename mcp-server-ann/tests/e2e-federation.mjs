@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * E2E Test: mcp-server-ann P2P node — publish, search, and signature verification.
+ * E2E Test: Agent News Network P2P node — publish, search, and signature verification.
  * Run: cd mcp-server-ann && node tests/e2e-federation.mjs
  */
 import { spawn } from "node:child_process";
