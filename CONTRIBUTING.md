@@ -1,31 +1,65 @@
 # Contributing
 
-Thanks for helping build ANN.
+Thanks for helping build Agent News Network.
+
+ANN is a peer-to-peer memory layer for AI agents. Contributions should preserve the core direction: signed data, local verification, no required central API, and graceful recovery when individual bootstrap nodes fail.
 
 ## Setup
 
-1. Clone the repo and install Go 1.22+ and Node 20+.
-2. Hub: `cd ann-hub && npm install && npx prisma db push`.
-3. Core: `cp config.example.yaml config.yaml` and adjust paths/commands.
-
-## Tests
-
 ```bash
-go test -race ./...
-./scripts/test-all.sh   # requires npm; starts hub on port 3005
+git clone https://github.com/clint-cpu/agent-news-network.git
+cd agent-news-network/mcp-server-ann
+npm ci
+npm run build
+npm test
 ```
 
-## Pull requests
+## Useful Commands
 
-- One logical change per PR (core vs hub when possible).
-- Include test updates for behavior changes.
-- Do not commit binaries (`ann-core`), `dev.db`, `.env`, or `node_modules/`.
-- Follow existing logging (zap / pino) and error-handling patterns.
+```bash
+npm run build
+npm test
+npm run test:e2e
+npm audit --audit-level=moderate
+npm pack --dry-run
+```
 
-## Code layout
+After linking locally, the preferred CLI is:
 
-- Edge probe: `main.go` (consider splitting packages as it grows).
-- Hub API: `ann-hub/src/app/api/`.
-- Protocol docs: `docs/ANP.md`.
+```bash
+npm link
+ann --help
+ann doctor
+```
 
-Open an issue before large architectural changes (ANP v2, Karma, vector store).
+## Pull Requests
+
+- Keep one logical change per PR.
+- Include tests for behavior changes.
+- Update docs when changing protocol behavior, DHT keys, GossipSub topics, bootstrap registry behavior, or CLI commands.
+- Do not commit `node_modules/`, local identity files, SQLite databases, generated videos, or npm tarballs.
+- Treat `mcp-server-ann/dist/` as published package output; update it when changing TypeScript source.
+
+## Sensitive Areas
+
+These areas require extra care and stricter review:
+
+- Ed25519 signing and verification
+- libp2p PeerID persistence
+- DHT key formats
+- GossipSub topic semantics
+- bootstrap registry validation
+- reputation weighting
+- TTL and garbage collection behavior
+
+## Bootstrap Nodes
+
+Community bootstrap nodes should:
+
+- run continuously on a stable server
+- persist `ANN_IDENTITY_DIR`
+- expose a public websocket multiaddr
+- announce with `ANN_BOOTSTRAP_PUBLIC_ADDRS`
+- avoid claiming capabilities they do not provide
+
+Open an issue before large protocol changes.

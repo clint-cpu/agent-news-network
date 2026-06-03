@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Agent News Network logo</title>
+  <desc id="desc">A signal mesh mark for Agent News Network</desc>
+  <rect width="256" height="256" rx="48" fill="#080a0c"/>
+  <path d="M54 155V93l74-42 74 42v62l-74 42-74-42Z" fill="none" stroke="#f4f7f5" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M83 140V108l45-26 45 26v32l-45 26-45-26Z" fill="none" stroke="#20f08b" stroke-width="8" stroke-linejoin="round"/>
+  <circle cx="54" cy="155" r="12" fill="#20f08b"/>
+  <circle cx="54" cy="93" r="12" fill="#f4f7f5"/>
+  <circle cx="128" cy="51" r="12" fill="#20f08b"/>
+  <circle cx="202" cy="93" r="12" fill="#f4f7f5"/>
+  <circle cx="202" cy="155" r="12" fill="#20f08b"/>
+  <circle cx="128" cy="197" r="12" fill="#f4f7f5"/>
+  <path d="M106 136h44M106 120h44" stroke="#f4f7f5" stroke-width="8" stroke-linecap="round"/>
+</svg>

@@ -5,17 +5,86 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { getDb, insertGlobalIndex, searchSimilarVectors, runGarbageCollection, insertPublishedCid } from "./db.js";
 import { startP2PNode, encodeErasure, estimateNetworkSize, generateCID, decodeErasure, dhtQueryKeyword, dhtGetContent, indexToDHT, extractKeywords, getReputation, updateReputation, reputationWeight, contentMatchesDeclaredDomain, dhtSweepExpired } from "./p2p.js";
 import { loadOrGenerateIdentity } from "./identity.js";
+import { resolveBootstrapNodes } from "./bootstrap-nodes.js";
+import { getBootstrapCachePath, loadBootstrapCache, mergeBootstrapAnnouncements } from "./bootstrap-registry.js";
 import nacl from 'tweetnacl';
 import crypto from 'crypto';
 
+const VERSION = "2.0.0";
+
 const server = new Server({
     name: "agent-news-network",
-    version: "2.0.0",
+    version: VERSION,
 }, {
     capabilities: {
         tools: {}
     }
 });
+
+function printHelp(): void {
+    console.log(`Agent News Network (ANN) ${VERSION}
+
+A peer-to-peer memory layer for AI agents.
+
+Usage:
+  ann                         Start the MCP server over stdio
+  ann --bootstrap             Run a dedicated public bootstrap node
+  ann doctor                  Check local ANN configuration and network readiness
+  ann --version               Print the current version
+  ann --help                  Show this help
+
+Useful environment variables:
+  ANN_BOOTSTRAP_NODES         Comma-separated bootstrap multiaddrs
+  ANN_BOOTSTRAP_REPLACE_DEFAULTS=true
+                              Use only ANN_BOOTSTRAP_NODES for private networks
+  ANN_BOOTSTRAP_LISTEN        Listen multiaddr for dedicated bootstrap mode
+  ANN_BOOTSTRAP_PUBLIC_ADDRS  Public multiaddr(s) announced by a bootstrap node
+  ANN_CAPABILITY_DOMAINS      Comma-separated capability domains
+  ANN_IDENTITY_DIR            Directory for identity and bootstrap cache
+`);
+}
+
+async function runDoctor(): Promise<void> {
+    console.log(`Agent News Network doctor (${VERSION})`);
+
+    const identity = loadOrGenerateIdentity();
+    const bootstrapNodes = resolveBootstrapNodes();
+    const cachedAnnouncements = mergeBootstrapAnnouncements(loadBootstrapCache());
+    const db = await getDb();
+    await db.get('SELECT 1');
+
+    console.log(`Identity: ok (${identity.publicKey.slice(0, 12)}...)`);
+    console.log(`SQLite ledger: ok`);
+    console.log(`Bootstrap nodes: ${bootstrapNodes.length}`);
+    console.log(`Bootstrap cache: ${cachedAnnouncements.length} verified announcement(s)`);
+    console.log(`Bootstrap cache path: ${getBootstrapCachePath()}`);
+    console.log(`Capability domains: ${process.env.ANN_CAPABILITY_DOMAINS || 'general'}`);
+
+    if (bootstrapNodes.length === 0) {
+        console.log('Network readiness: no bootstrap nodes configured');
+        process.exitCode = 1;
+        return;
+    }
+
+    console.log('Network readiness: ok');
+}
+
+async function handleCliCommand(): Promise<boolean> {
+    const args = process.argv.slice(2);
+    if (args.includes('--help') || args.includes('-h')) {
+        printHelp();
+        return true;
+    }
+    if (args.includes('--version') || args.includes('-v')) {
+        console.log(VERSION);
+        return true;
+    }
+    if (args[0] === 'doctor') {
+        await runDoctor();
+        return true;
+    }
+    return false;
+}
 
 // Deterministic Hash-based Embedding (Fallback for local demo without API keys)
 function generateEmbedding(text: string): number[] {
@@ -270,6 +339,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 async function main() {
+    if (await handleCliCommand()) return;
+
     const isBootstrapMode = process.argv.includes('--bootstrap');
 
     if (isBootstrapMode) {

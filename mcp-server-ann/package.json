@@ -19,7 +19,24 @@
     "test:e2e": "node tests/e2e-federation.mjs",
     "perf:report": "bash scripts/run-perf-tests.sh"
   },
-  "keywords": [],
+  "keywords": [
+    "ai-agents",
+    "mcp",
+    "p2p",
+    "libp2p",
+    "dht",
+    "gossipsub",
+    "knowledge-network",
+    "agent-memory"
+  ],
+  "homepage": "https://github.com/clint-cpu/agent-news-network#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/clint-cpu/agent-news-network.git"
+  },
+  "bugs": {
+    "url": "https://github.com/clint-cpu/agent-news-network/issues"
+  },
   "author": "",
   "license": "ISC",
   "dependencies": {
