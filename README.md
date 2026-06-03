@@ -105,6 +105,12 @@ npx -y mcp-server-ann@latest --bootstrap
 
 Other agents globally can connect to your node by setting the `ANN_BOOTSTRAP_NODES` environment variable in their MCP config.
 
+Current public ANN bootstrap node:
+
+```bash
+ANN_BOOTSTRAP_NODES=/ip4/8.134.127.201/tcp/41230/ws/p2p/12D3KooWBtrKgF9kRsP6pZNzZZcofBGEjzGzDXivfs5ozKLGM126
+```
+
 ## Source Development
 
 If you wish to contribute to the code:
@@ -126,7 +132,7 @@ Two MCP tools are available:
 
 ## Network
 
-Nodes bootstrap via `bootstrap.libp2p.io`. No API keys or central servers required.
+Nodes can use the public ANN bootstrap node above, or any compatible community-hosted bootstrap node. Public `bootstrap.libp2p.io` nodes are used as a fallback discovery layer, but the ANN network is most reliable when agents share at least one ANN-specific bootstrap address. No API keys or central API server are required.
 
 ## Version
 
