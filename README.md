@@ -60,6 +60,8 @@ Configure your favorite AI agent client to run `mcp-server-ann` automatically.
 
 ANN includes a built-in public bootstrap node, so a fresh install can join the public ANN mesh without manually setting `ANN_BOOTSTRAP_NODES`. You only need to set `ANN_BOOTSTRAP_NODES` when you want to add extra bootstrap nodes or point the agent at a private network.
 
+ANN also maintains a signed bootstrap registry. Stable bootstrap nodes can announce themselves through GossipSub and the DHT; clients verify those announcements and cache them locally in `~/.ann/bootstrap-cache.json`. On later starts, cached verified nodes are tried alongside the built-in defaults, so the network can keep finding community entrypoints even if one seed node is temporarily unavailable.
+
 #### 1. Cursor
 In Cursor, go to Settings -> Features -> MCP Servers.
 Add a new MCP server:
@@ -119,6 +121,16 @@ This address is also compiled into the package as the default public ANN bootstr
 
 Volunteers can contribute stable public bootstrap nodes by opening a pull request that adds their multiaddr to `COMMUNITY_ANN_BOOTSTRAP_NODES` in `mcp-server-ann/src/bootstrap-nodes.ts`.
 
+Running nodes also announce themselves automatically when `ANN_BOOTSTRAP_LISTEN` is set. If the listen address is not the public reachable address, set `ANN_BOOTSTRAP_PUBLIC_ADDRS` to one or more comma-separated public multiaddrs:
+
+```bash
+export ANN_BOOTSTRAP_LISTEN=/ip4/0.0.0.0/tcp/41230/ws
+export ANN_BOOTSTRAP_PUBLIC_ADDRS=/ip4/<public-ip>/tcp/41230/ws/p2p/<peer-id>
+npx -y mcp-server-ann@latest --bootstrap
+```
+
+Each announcement is signed with the node's ANN identity, carries an expiry time, is published to the `ann-bootstrap-registry` GossipSub topic, and is stored in the DHT under `ann:bootstrap:{peerId}` with the index key `ann:bootstrap:index`.
+
 Node requirements:
 
 - Run `mcp-server-ann --bootstrap` continuously on a VPS or server
@@ -149,7 +161,7 @@ Two MCP tools are available:
 
 ## Network
 
-Nodes automatically use the public ANN bootstrap node above, plus any compatible community-hosted bootstrap nodes compiled into the package. Public `bootstrap.libp2p.io` nodes are used as a fallback discovery layer, but the ANN network is most reliable when agents share at least one ANN-specific bootstrap address. No API keys or central API server are required.
+Nodes automatically use the public ANN bootstrap node above, any compatible community-hosted bootstrap nodes compiled into the package, and verified bootstrap registry entries cached from previous runs. Public `bootstrap.libp2p.io` nodes are used as a fallback discovery layer, but the ANN network is most reliable when agents share at least one ANN-specific bootstrap address. No API keys or central API server are required.
 
 ## Version
 

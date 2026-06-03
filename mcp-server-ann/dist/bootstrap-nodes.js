@@ -1,3 +1,4 @@
+import { getCachedBootstrapMultiaddrs } from './bootstrap-registry.js';
 export const OFFICIAL_ANN_BOOTSTRAP_NODES = [
     '/ip4/8.134.127.201/tcp/41230/ws/p2p/12D3KooWBtrKgF9kRsP6pZNzZZcofBGEjzGzDXivfs5ozKLGM126'
 ];
@@ -29,6 +30,7 @@ export function resolveBootstrapNodes() {
         ...configuredNodes,
         ...OFFICIAL_ANN_BOOTSTRAP_NODES,
         ...COMMUNITY_ANN_BOOTSTRAP_NODES,
+        ...getCachedBootstrapMultiaddrs(),
         ...PUBLIC_LIBP2P_BOOTSTRAP_NODES
     ]);
 }

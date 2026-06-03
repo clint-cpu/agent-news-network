@@ -13,6 +13,14 @@ import { insertGlobalIndex, getExpiredPublishedCids, deletePublishedCid } from '
 import { loadOrGenerateIdentity } from './identity.js';
 import { loadOrGeneratePeerPrivateKey } from './peer-identity.js';
 import { resolveBootstrapNodes } from './bootstrap-nodes.js';
+import {
+  BOOTSTRAP_REGISTRY_TOPIC,
+  buildBootstrapAnnouncement,
+  cacheBootstrapAnnouncement,
+  putBootstrapAnnouncementToDHT,
+  searchBootstrapAnnouncements,
+  verifyBootstrapAnnouncement
+} from './bootstrap-registry.js';
 import nacl from 'tweetnacl';
 
 let node: Libp2p<any> | null = null;
@@ -69,6 +77,8 @@ export async function startP2PNode(mode: NodeMode = 'full'): Promise<Libp2p<any>
 
       // Set up pubsub handlers after node is started
       await setupPubsubHandlers(node, mode);
+      await refreshBootstrapRegistry(node);
+      await announceBootstrapNodeIfConfigured(node);
 
       return node;
     } catch (err) {
@@ -101,6 +111,20 @@ export async function setupPubsubHandlers(nodeInstance: Libp2p<any>, mode: NodeM
         const capability = JSON.parse(msg);
         console.log(`[P2P] Discovered Agent Capability:`, capability.pubkey.slice(0, 8), `Domains:`, capability.domains);
       } catch (e) {}
+    } else if (evt.detail.topic === BOOTSTRAP_REGISTRY_TOPIC) {
+      const msg = new TextDecoder().decode(evt.detail.data);
+      try {
+        const announcement = JSON.parse(msg);
+        if (!verifyBootstrapAnnouncement(announcement)) {
+          console.warn('[BootstrapRegistry] Dropping invalid bootstrap announcement.');
+          return;
+        }
+        cacheBootstrapAnnouncement(announcement);
+        await putBootstrapAnnouncementToDHT(nodeInstance, announcement);
+        console.log(`[BootstrapRegistry] Cached bootstrap node ${announcement.peerId}`);
+      } catch (err) {
+        console.warn('[BootstrapRegistry] Failed to process bootstrap announcement:', err);
+      }
     } else if (evt.detail.topic === 'ann-global-index') {
       const msg = new TextDecoder().decode(evt.detail.data);
       console.log(`[P2P] [${mode}] Received global index broadcast`);
@@ -147,11 +171,59 @@ export async function setupPubsubHandlers(nodeInstance: Libp2p<any>, mode: NodeM
   });
   nodeInstance.services.pubsub.subscribe('ann-global-index');
   nodeInstance.services.pubsub.subscribe('ann-agent-capabilities');
+  nodeInstance.services.pubsub.subscribe(BOOTSTRAP_REGISTRY_TOPIC);
 
   // Publish own capability card immediately — gossipsub join is instantaneous
   const identity = loadOrGenerateIdentity();
   const capabilityCard = buildCapabilityCard(identity);
   await nodeInstance.services.pubsub.publish('ann-agent-capabilities', new TextEncoder().encode(JSON.stringify(capabilityCard)));
+}
+
+function getConfiguredBootstrapPublicAddrs(nodeInstance: Libp2p<any>): string[] {
+  const configured = process.env.ANN_BOOTSTRAP_PUBLIC_ADDRS;
+  if (configured && configured.trim().length > 0) {
+    return configured.split(',').map(addr => addr.trim()).filter(Boolean);
+  }
+
+  if (!process.env.ANN_BOOTSTRAP_LISTEN) {
+    return [];
+  }
+
+  return nodeInstance.getMultiaddrs().map(addr => addr.toString());
+}
+
+export async function announceBootstrapNodeIfConfigured(nodeInstance: Libp2p<any>): Promise<void> {
+  if (process.env.ANN_BOOTSTRAP_ANNOUNCE === 'false') return;
+
+  const multiaddrs = getConfiguredBootstrapPublicAddrs(nodeInstance);
+  if (multiaddrs.length === 0) return;
+
+  const identity = loadOrGenerateIdentity();
+  const announcement = buildBootstrapAnnouncement({
+    peerId: nodeInstance.peerId.toString(),
+    multiaddrs,
+    identity,
+    capabilities: ['bootstrap', 'dht', 'gossip'],
+    protocolVersion: process.env.npm_package_version || '2.0.0'
+  });
+
+  cacheBootstrapAnnouncement(announcement);
+  await putBootstrapAnnouncementToDHT(nodeInstance, announcement);
+  await nodeInstance.services.pubsub.publish(
+    BOOTSTRAP_REGISTRY_TOPIC,
+    new TextEncoder().encode(JSON.stringify(announcement))
+  );
+  console.log(`[BootstrapRegistry] Announced bootstrap node ${announcement.peerId}`);
+}
+
+export async function refreshBootstrapRegistry(nodeInstance: Libp2p<any>): Promise<void> {
+  const announcements = await searchBootstrapAnnouncements(nodeInstance);
+  for (const announcement of announcements) {
+    cacheBootstrapAnnouncement(announcement);
+  }
+  if (announcements.length > 0) {
+    console.log(`[BootstrapRegistry] Refreshed ${announcements.length} bootstrap announcement(s) from DHT.`);
+  }
 }
 
 /**
