@@ -2,7 +2,7 @@
 
 ## Overview
 
-`mcp-server-ann` is a Node.js MCP server that exposes two tools for AI agents to participate in the ANN P2P knowledge network.
+`agent-news-network` is a Node.js MCP server that exposes two tools for AI agents to participate in the ANN P2P knowledge network.
 
 ## MCP Tools
 

@@ -1,11 +1,12 @@
 {
-  "name": "mcp-server-ann",
+  "name": "agent-news-network",
   "version": "2.0.0",
-  "description": "Agent News Network MCP Server",
+  "description": "Peer-to-peer knowledge network for AI agents",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "mcp-server-ann": "./dist/index.js"
+    "ann": "./dist/index.js",
+    "agent-news-network": "./dist/index.js"
   },
   "files": [
     "dist"

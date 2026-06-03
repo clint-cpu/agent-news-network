@@ -3,7 +3,7 @@
 ## 2026-05-18 — Post-Refactor Audit (Phase 1-4)
 
 ### Scope
-mcp-server-ann Phase 2 (pure P2P, libp2p + GossipSub + Kademlia DHT).
+Agent News Network Phase 2 (pure P2P, libp2p + GossipSub + Kademlia DHT).
 Previous Phase 1 components (Go daemon, Next.js hub) removed from tree.
 
 Subsequent audit added Phase 1 (DHT dual-key index), Phase 2A (DHT search), Phase 2B (dynamic capability domains), Phase 3 (reputation system), and Phase 4 (TTL-aware DHT reads).
