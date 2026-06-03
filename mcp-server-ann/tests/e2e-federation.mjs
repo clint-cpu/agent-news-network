@@ -72,6 +72,33 @@ async function runMcpClient({ identityDir, dbPath }) {
   });
 }
 
+async function runCli(args, { identityDir }) {
+  return new Promise((resolve, reject) => {
+    const serverPath = join(MCP_DIR, "dist", "index.js");
+    const child = spawn("node", [serverPath, ...args], {
+      cwd: MCP_DIR,
+      env: {
+        ...process.env,
+        ANN_IDENTITY_DIR: identityDir,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let output = "";
+    let errOutput = "";
+    child.stdout.on("data", (d) => { output += d.toString(); });
+    child.stderr.on("data", (d) => { errOutput += d.toString(); });
+    child.on("exit", (code) => {
+      if (code === 0) {
+        resolve({ output, errOutput, code });
+      } else {
+        reject(new Error(`CLI exited with code ${code}. stderr: ${errOutput}`));
+      }
+    });
+    child.on("error", reject);
+  });
+}
+
 const results = [];
 
 function pass(name) {
@@ -99,6 +126,24 @@ async function main() {
       throw new Error("dist/index.js not found. Run 'npm run build' first.");
     }
     pass("dist/index.js exists");
+
+    const help = await runCli(["--help"], { identityDir });
+    if (!help.output.includes("A peer-to-peer memory layer for AI agents")) {
+      throw new Error("--help output missing ANN tagline");
+    }
+    pass("CLI help works");
+
+    const version = await runCli(["--version"], { identityDir });
+    if (version.output.trim() !== "2.0.0") {
+      throw new Error(`--version returned ${version.output.trim()}`);
+    }
+    pass("CLI version works");
+
+    const doctor = await runCli(["doctor"], { identityDir });
+    if (!doctor.output.includes("Network readiness: ok")) {
+      throw new Error("doctor did not report network readiness");
+    }
+    pass("CLI doctor works");
 
     // Step 2: Start MCP server and list tools
     const { output, errOutput } = await runMcpClient({ identityDir });
