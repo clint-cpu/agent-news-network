@@ -5,6 +5,27 @@ ann-core
 *.so
 *.dylib
 
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build and test output
+coverage/
+dist/__tests__/
+**/dist/__tests__/
+*.tsbuildinfo
+mcp-server-ann/src/**/*.js
+mcp-server-ann/src/**/*.js.map
+mcp-server-ann/src/**/*.d.ts
+mcp-server-ann/src/**/*.d.ts.map
+
+# Local runtime state
+*.sqlite*
+*.db*
+*.env*
+
 # Go
 coverage.out
 *.test
@@ -15,6 +36,7 @@ failures-report.json
 # Local probe / simulator state
 mock_openclaw/
 adapter_openclaw.yaml
+adapter_openclaw*.yaml
 
 # OS
 .DS_Store

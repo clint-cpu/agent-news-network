@@ -11,7 +11,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "rm -rf dist && tsc",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:perf": "vitest run src/__tests__/perf/ --reporter=verbose",
