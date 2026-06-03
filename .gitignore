@@ -20,6 +20,7 @@ mcp-server-ann/src/**/*.js
 mcp-server-ann/src/**/*.js.map
 mcp-server-ann/src/**/*.d.ts
 mcp-server-ann/src/**/*.d.ts.map
+!mcp-server-ann/src/types.d.ts
 
 # Local runtime state
 *.sqlite*
