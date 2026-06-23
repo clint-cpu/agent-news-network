@@ -18,7 +18,7 @@
   "scripts": {
     "build": "rm -rf dist && tsc",
     "test": "vitest run --exclude 'src/__tests__/perf/**/*.test.ts'",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage --exclude 'src/__tests__/perf/**/*.test.ts'",
     "test:perf": "vitest run src/__tests__/perf/ --reporter=verbose",
     "test:network": "node scripts/network-check.mjs",
     "test:e2e": "node tests/e2e-federation.mjs",
