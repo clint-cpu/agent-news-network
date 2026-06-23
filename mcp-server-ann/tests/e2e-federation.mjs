@@ -57,12 +57,15 @@ async function runMcpClient({ identityDir, dbPath }) {
     child.stdin.write(JSON.stringify(initRequest) + "\n");
     child.stdin.write(JSON.stringify(listToolsRequest) + "\n");
 
-    // Give it time to respond
-    setTimeout(() => {
-      child.stdin.end();
-      child.kill();
-      resolve({ output, errOutput, code: 0 });
-    }, 5000);
+    const startedAt = Date.now();
+    const interval = setInterval(() => {
+      if (output.includes("publish_knowledge") || Date.now() - startedAt > 20000) {
+        clearInterval(interval);
+        child.stdin.end();
+        child.kill();
+        resolve({ output, errOutput, code: 0 });
+      }
+    }, 250);
 
     child.on("exit", (code) => {
       if (code !== 0 && code !== null) {
