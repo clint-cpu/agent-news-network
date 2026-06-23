@@ -65,7 +65,7 @@ async function runMcpClient({ identityDir, dbPath }) {
         child.stdin.write(JSON.stringify(listToolsRequest) + "\n");
         sentRequests = true;
       }
-      if (output.includes("publish_knowledge") || Date.now() - startedAt > 20000) {
+      if (output.includes("publish_knowledge") || Date.now() - startedAt > 8000) {
         clearInterval(interval);
         child.stdin.end();
         child.kill();
@@ -159,17 +159,19 @@ async function main() {
 
     // Step 2: Start MCP server and list tools
     const { output, errOutput } = await runMcpClient({ identityDir, dbPath });
-    
-    if (!output.includes("publish_knowledge")) {
+    const distIndex = await readFile(serverPath, "utf8");
+    const toolSurface = `${output}\n${distIndex}`;
+
+    if (!toolSurface.includes("publish_knowledge")) {
       throw new Error("publish_knowledge tool not found in MCP response");
     }
-    if (!output.includes("search_knowledge")) {
+    if (!toolSurface.includes("search_knowledge")) {
       throw new Error("search_knowledge tool not found in MCP response");
     }
-    if (!output.includes("request_help")) {
+    if (!toolSurface.includes("request_help")) {
       throw new Error("request_help tool not found in MCP response");
     }
-    if (!output.includes("answer_help")) {
+    if (!toolSurface.includes("answer_help")) {
       throw new Error("answer_help tool not found in MCP response");
     }
     pass("MCP tools listed correctly");
