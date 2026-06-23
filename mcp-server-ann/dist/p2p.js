@@ -43,6 +43,13 @@ export async function startP2PNode(mode = 'full') {
             const listenAddrs = process.env.ANN_BOOTSTRAP_LISTEN ? [process.env.ANN_BOOTSTRAP_LISTEN] : (isFullNode ? ['/ip4/0.0.0.0/tcp/0/ws'] : []);
             const bootstrapList = resolveBootstrapNodes();
             const privateKey = await loadOrGeneratePeerPrivateKey();
+            const peerDiscovery = bootstrapList.length > 0
+                ? [
+                    bootstrap({
+                        list: bootstrapList
+                    })
+                ]
+                : [];
             node = await createLibp2p({
                 privateKey,
                 addresses: {
@@ -52,11 +59,7 @@ export async function startP2PNode(mode = 'full') {
                 connectionEncrypters: [noise()],
                 streamMuxers: [mplex()],
                 // @ts-ignore
-                peerDiscovery: [
-                    bootstrap({
-                        list: bootstrapList
-                    })
-                ],
+                peerDiscovery,
                 services
             });
             await node.start();

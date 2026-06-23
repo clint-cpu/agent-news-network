@@ -57,6 +57,14 @@ export async function startP2PNode(mode: NodeMode = 'full'): Promise<Libp2p<any>
   const bootstrapList = resolveBootstrapNodes();
   const privateKey = await loadOrGeneratePeerPrivateKey();
 
+  const peerDiscovery = bootstrapList.length > 0
+    ? [
+        (bootstrap as any)({
+          list: bootstrapList
+        })
+      ]
+    : [];
+
   node = await createLibp2p({
     privateKey,
     addresses: {
@@ -66,11 +74,7 @@ export async function startP2PNode(mode: NodeMode = 'full'): Promise<Libp2p<any>
     connectionEncrypters: [noise()],
     streamMuxers: [mplex()],
     // @ts-ignore
-    peerDiscovery: [
-      (bootstrap as any)({
-        list: bootstrapList
-      })
-    ],
+    peerDiscovery,
     services
   });
 
