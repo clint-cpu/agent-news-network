@@ -56,11 +56,14 @@ async function runMcpClient({ identityDir, dbPath }) {
       params: {},
     };
 
-    child.stdin.write(JSON.stringify(initRequest) + "\n");
-    child.stdin.write(JSON.stringify(listToolsRequest) + "\n");
-
     const startedAt = Date.now();
+    let sentRequests = false;
     const interval = setInterval(() => {
+      if (!sentRequests && output.includes("ANN P2P MCP Server connected via stdio")) {
+        child.stdin.write(JSON.stringify(initRequest) + "\n");
+        child.stdin.write(JSON.stringify(listToolsRequest) + "\n");
+        sentRequests = true;
+      }
       if (output.includes("publish_knowledge") || Date.now() - startedAt > 20000) {
         clearInterval(interval);
         child.stdin.end();
