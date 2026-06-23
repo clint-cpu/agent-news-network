@@ -215,7 +215,7 @@ export async function announceBootstrapNodeIfConfigured(nodeInstance) {
         multiaddrs,
         identity,
         capabilities: ['bootstrap', 'dht', 'gossip'],
-        protocolVersion: process.env.npm_package_version || '2.0.0'
+        protocolVersion: process.env.npm_package_version || '2.1.0'
     });
     cacheBootstrapAnnouncement(announcement);
     await putBootstrapAnnouncementToDHT(nodeInstance, announcement);
@@ -365,7 +365,7 @@ function buildCapabilityCard(identity) {
         pubkey: identity.publicKey,
         domains: getCapabilityDomains(),
         model: process.env.ANN_CAPABILITY_MODEL || 'unknown',
-        version: "2.0.0"
+        version: "2.1.0"
     };
 }
 // ─── Phase 1: DHT Keyword Index ──────────────────────────────────────────────

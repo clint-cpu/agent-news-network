@@ -86,7 +86,7 @@ export function buildBootstrapAnnouncement(params: {
     multiaddrs: normalizeMultiaddrs(params.multiaddrs),
     annPubkey: params.identity.publicKey,
     capabilities: params.capabilities ?? ['bootstrap'],
-    protocolVersion: params.protocolVersion ?? '2.0.0',
+    protocolVersion: params.protocolVersion ?? '2.1.0',
     issuedAt,
     expiresAt: issuedAt + (params.ttlMs ?? BOOTSTRAP_ANNOUNCEMENT_TTL_MS)
   };

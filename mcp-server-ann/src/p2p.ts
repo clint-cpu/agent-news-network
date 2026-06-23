@@ -234,7 +234,7 @@ export async function announceBootstrapNodeIfConfigured(nodeInstance: Libp2p<any
     multiaddrs,
     identity,
     capabilities: ['bootstrap', 'dht', 'gossip'],
-    protocolVersion: process.env.npm_package_version || '2.0.0'
+    protocolVersion: process.env.npm_package_version || '2.1.0'
   });
 
   cacheBootstrapAnnouncement(announcement);
@@ -414,7 +414,7 @@ function buildCapabilityCard(identity: ReturnType<typeof loadOrGenerateIdentity>
         pubkey: identity.publicKey,
         domains: getCapabilityDomains(),
         model: process.env.ANN_CAPABILITY_MODEL || 'unknown',
-        version: "2.0.0"
+        version: "2.1.0"
     };
 }
 

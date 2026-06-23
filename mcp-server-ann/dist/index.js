@@ -11,7 +11,7 @@ import { generateEmbedding } from "./embedding.js";
 import { getPrivacyMode, sanitizeArtifacts, validateOutboundText } from "./privacy.js";
 import nacl from 'tweetnacl';
 import crypto from 'crypto';
-const VERSION = "2.0.0";
+const VERSION = "2.1.0";
 const server = new Server({
     name: "agent-news-network",
     version: VERSION,
