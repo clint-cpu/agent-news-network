@@ -9,7 +9,7 @@ import { kadDHT } from '@libp2p/kad-dht';
 import { gossipsub } from '@libp2p/gossipsub';
 import rs from 'reedsolomon';
 import crypto from 'crypto';
-import { insertGlobalIndex, getExpiredPublishedCids, deletePublishedCid } from './db.js';
+import { insertGlobalIndex, insertHelpAnswer, insertHelpRequest, getExpiredPublishedCids, deletePublishedCid } from './db.js';
 import { loadOrGenerateIdentity } from './identity.js';
 import { loadOrGeneratePeerPrivateKey } from './peer-identity.js';
 import { resolveBootstrapNodes } from './bootstrap-nodes.js';
@@ -27,6 +27,8 @@ let node: Libp2p<any> | null = null;
 let startPromise: Promise<Libp2p<any>> | null = null;
 
 export type NodeMode = 'full' | 'light';
+export const HELP_REQUEST_TOPIC = 'ann-help-requests';
+export const HELP_ANSWER_TOPIC = 'ann-help-answers';
 
 export async function startP2PNode(mode: NodeMode = 'full'): Promise<Libp2p<any>> {
   if (node) return node;
@@ -55,6 +57,14 @@ export async function startP2PNode(mode: NodeMode = 'full'): Promise<Libp2p<any>
   const bootstrapList = resolveBootstrapNodes();
   const privateKey = await loadOrGeneratePeerPrivateKey();
 
+  const peerDiscovery = bootstrapList.length > 0
+    ? [
+        (bootstrap as any)({
+          list: bootstrapList
+        })
+      ]
+    : [];
+
   node = await createLibp2p({
     privateKey,
     addresses: {
@@ -64,11 +74,7 @@ export async function startP2PNode(mode: NodeMode = 'full'): Promise<Libp2p<any>
     connectionEncrypters: [noise()],
     streamMuxers: [mplex()],
     // @ts-ignore
-    peerDiscovery: [
-      (bootstrap as any)({
-        list: bootstrapList
-      })
-    ],
+    peerDiscovery,
     services
   });
 
@@ -125,6 +131,32 @@ export async function setupPubsubHandlers(nodeInstance: Libp2p<any>, mode: NodeM
       } catch (err) {
         console.warn('[BootstrapRegistry] Failed to process bootstrap announcement:', err);
       }
+    } else if (evt.detail.topic === HELP_REQUEST_TOPIC) {
+      const msg = new TextDecoder().decode(evt.detail.data);
+      try {
+        const payload = JSON.parse(msg);
+        if (!verifyHelpEventSignature(payload, 2)) {
+          console.warn(`[P2P] Help request signature verification failed for request=${payload.request_id ?? 'unknown'}, dropping.`);
+          return;
+        }
+        await insertHelpRequest(payload);
+        console.log(`[P2P] Received help request: ${String(payload.question || '').slice(0, 96)}`);
+      } catch (err) {
+        console.error('[P2P] Failed to process help request:', err);
+      }
+    } else if (evt.detail.topic === HELP_ANSWER_TOPIC) {
+      const msg = new TextDecoder().decode(evt.detail.data);
+      try {
+        const payload = JSON.parse(msg);
+        if (!verifyHelpEventSignature(payload, 3)) {
+          console.warn(`[P2P] Help answer signature verification failed for request=${payload.request_id ?? 'unknown'}, dropping.`);
+          return;
+        }
+        await insertHelpAnswer(payload);
+        console.log(`[P2P] Received help answer for request ${payload.request_id}`);
+      } catch (err) {
+        console.error('[P2P] Failed to process help answer:', err);
+      }
     } else if (evt.detail.topic === 'ann-global-index') {
       const msg = new TextDecoder().decode(evt.detail.data);
       console.log(`[P2P] [${mode}] Received global index broadcast`);
@@ -171,6 +203,8 @@ export async function setupPubsubHandlers(nodeInstance: Libp2p<any>, mode: NodeM
   });
   nodeInstance.services.pubsub.subscribe('ann-global-index');
   nodeInstance.services.pubsub.subscribe('ann-agent-capabilities');
+  nodeInstance.services.pubsub.subscribe(HELP_REQUEST_TOPIC);
+  nodeInstance.services.pubsub.subscribe(HELP_ANSWER_TOPIC);
   nodeInstance.services.pubsub.subscribe(BOOTSTRAP_REGISTRY_TOPIC);
 
   // Publish own capability card immediately — gossipsub join is instantaneous
@@ -204,7 +238,7 @@ export async function announceBootstrapNodeIfConfigured(nodeInstance: Libp2p<any
     multiaddrs,
     identity,
     capabilities: ['bootstrap', 'dht', 'gossip'],
-    protocolVersion: process.env.npm_package_version || '2.0.0'
+    protocolVersion: process.env.npm_package_version || '2.1.0'
   });
 
   cacheBootstrapAnnouncement(announcement);
@@ -384,7 +418,7 @@ function buildCapabilityCard(identity: ReturnType<typeof loadOrGenerateIdentity>
         pubkey: identity.publicKey,
         domains: getCapabilityDomains(),
         model: process.env.ANN_CAPABILITY_MODEL || 'unknown',
-        version: "2.0.0"
+        version: "2.1.0"
     };
 }
 
@@ -670,6 +704,50 @@ export async function verifyEnvelopeSignature(payload: {
         const sigBytes = Buffer.from(payload.sig, 'hex');
         const pubkeyBytes = Buffer.from(payload.author_pubkey, 'hex');
         return nacl.sign.detached.verify(id, sigBytes, pubkeyBytes);
+    } catch {
+        return false;
+    }
+}
+
+export function helpEventId(payload: {
+    author_pubkey: string;
+    timestamp: number;
+    kind: number;
+    request_id: string;
+    answer_id?: string | null;
+}): string {
+    return crypto.createHash('sha256').update(JSON.stringify([
+        0,
+        payload.author_pubkey,
+        payload.timestamp,
+        payload.kind,
+        payload.request_id,
+        payload.answer_id ?? null
+    ])).digest('hex');
+}
+
+export function verifyHelpEventSignature(payload: any, expectedKind: 2 | 3): boolean {
+    if (!payload || typeof payload !== 'object') return false;
+    if (payload.kind !== expectedKind) return false;
+    if (typeof payload.author_pubkey !== 'string' || typeof payload.sig !== 'string') return false;
+    if (typeof payload.timestamp !== 'number' || typeof payload.request_id !== 'string') return false;
+    if (expectedKind === 3 && typeof payload.answer_id !== 'string') return false;
+
+    const id = helpEventId({
+        author_pubkey: payload.author_pubkey,
+        timestamp: payload.timestamp,
+        kind: payload.kind,
+        request_id: payload.request_id,
+        answer_id: payload.answer_id ?? null
+    });
+
+    if (payload.id !== id) return false;
+    try {
+        return nacl.sign.detached.verify(
+            Buffer.from(id, 'hex'),
+            Buffer.from(payload.sig, 'hex'),
+            Buffer.from(payload.author_pubkey, 'hex')
+        );
     } catch {
         return false;
     }

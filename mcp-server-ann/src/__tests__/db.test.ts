@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { getDb } from '../db.js';
+import { getDb, resolveDbPath } from '../db.js';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import path from 'path';
@@ -50,5 +50,34 @@ describe('SQLite WAL Mode', () => {
     expect(Number(busyTimeout.busy_timeout || busyTimeout.timeout)).toBe(5000);
 
     await db.close();
+  });
+});
+
+describe('ANN DB path resolution', () => {
+  const originalDbPath = process.env.ANN_DB_PATH;
+  const originalIdentityDir = process.env.ANN_IDENTITY_DIR;
+
+  afterEach(() => {
+    if (originalDbPath === undefined) {
+      delete process.env.ANN_DB_PATH;
+    } else {
+      process.env.ANN_DB_PATH = originalDbPath;
+    }
+    if (originalIdentityDir === undefined) {
+      delete process.env.ANN_IDENTITY_DIR;
+    } else {
+      process.env.ANN_IDENTITY_DIR = originalIdentityDir;
+    }
+  });
+
+  it('uses ANN_DB_PATH when configured', () => {
+    process.env.ANN_DB_PATH = '/tmp/ann-custom.sqlite';
+    expect(resolveDbPath()).toBe('/tmp/ann-custom.sqlite');
+  });
+
+  it('falls back to ANN_IDENTITY_DIR local ledger', () => {
+    delete process.env.ANN_DB_PATH;
+    process.env.ANN_IDENTITY_DIR = '/tmp/ann-id';
+    expect(resolveDbPath()).toBe('/tmp/ann-id/local_ann_ledger.sqlite');
   });
 });

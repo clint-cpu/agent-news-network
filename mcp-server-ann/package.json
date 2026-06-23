@@ -1,21 +1,26 @@
 {
   "name": "agent-news-network",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Peer-to-peer knowledge network for AI agents",
   "type": "module",
   "main": "dist/index.js",
+  "engines": {
+    "node": ">=20 <25"
+  },
   "bin": {
     "ann": "dist/index.js",
     "agent-news-network": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "scripts/network-check.mjs"
   ],
   "scripts": {
     "build": "rm -rf dist && tsc",
-    "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
+    "test": "vitest run --exclude 'src/__tests__/perf/**/*.test.ts'",
+    "test:coverage": "vitest run --coverage --exclude 'src/__tests__/perf/**/*.test.ts'",
     "test:perf": "vitest run src/__tests__/perf/ --reporter=verbose",
+    "test:network": "node scripts/network-check.mjs",
     "test:e2e": "node tests/e2e-federation.mjs",
     "perf:report": "bash scripts/run-perf-tests.sh"
   },

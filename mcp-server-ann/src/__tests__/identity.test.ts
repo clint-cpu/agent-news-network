@@ -1,42 +1,26 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import nacl from 'tweetnacl';
-import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-
-// We will test the actual identity module, but mock fs to avoid writing to ~/.ann
-vi.mock('fs');
-
-// Import after mocking
-const { loadOrGenerateIdentity } = await import('../identity.js');
+import { loadOrGenerateIdentity } from '../identity.js';
 
 describe('Identity / Ed25519', () => {
-  const mockDir = path.join(os.homedir(), '.ann');
-  const mockFile = path.join(mockDir, 'identity.json');
+  const previousIdentityDir = process.env.ANN_IDENTITY_DIR;
+  let tempDir: string;
 
   beforeEach(() => {
-    vi.resetAllMocks();
-    // @ts-ignore
-    fs.existsSync.mockImplementation((p: string) => {
-      if (p === mockFile || p === mockDir) return true;
-      return false;
-    });
-    // @ts-ignore
-    fs.mkdirSync.mockImplementation(() => {});
-    // @ts-ignore
-    fs.writeFileSync.mockImplementation(() => {});
-    // @ts-ignore
-    fs.chmodSync.mockImplementation(() => {});
-    // @ts-ignore
-    fs.readFileSync.mockImplementation((p: string) => {
-      if (p === mockFile) return JSON.stringify({ publicKey: 'mock', privateKey: 'mock' });
-      return '{}';
-    });
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ann-identity-'));
+    process.env.ANN_IDENTITY_DIR = tempDir;
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    if (previousIdentityDir === undefined) {
+      delete process.env.ANN_IDENTITY_DIR;
+    } else {
+      process.env.ANN_IDENTITY_DIR = previousIdentityDir;
+    }
   });
 
   it('should generate Ed25519 keypair with correct hex format', () => {
@@ -66,7 +50,7 @@ describe('Identity / Ed25519', () => {
 
     const pubkeyBytes = Buffer.from(identity.publicKey, 'hex');
     const message = Buffer.from('hello ann');
-    const badSignature = new Uint8Array(64); // all zeros
+    const badSignature = new Uint8Array(64);
 
     const valid = nacl.sign.detached.verify(message, badSignature, pubkeyBytes);
     expect(valid).toBe(false);

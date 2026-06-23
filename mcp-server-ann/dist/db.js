@@ -1,11 +1,22 @@
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import path from 'path';
+import os from 'os';
+import fs from 'fs';
 let db = null;
+export function resolveDbPath() {
+    const configured = process.env.ANN_DB_PATH;
+    if (configured && configured.trim().length > 0) {
+        return path.resolve(configured);
+    }
+    const annDir = process.env.ANN_IDENTITY_DIR || path.join(os.homedir(), '.ann');
+    return path.join(annDir, 'local_ann_ledger.sqlite');
+}
 export async function getDb() {
     if (db)
         return db;
-    const dbPath = path.resolve(process.cwd(), 'local_ann_ledger.sqlite');
+    const dbPath = resolveDbPath();
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     db = await open({
         filename: dbPath,
         driver: sqlite3.Database
@@ -46,6 +57,36 @@ export async function getDb() {
       expires_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_published_cids_expires ON published_cids(expires_at);
+
+    CREATE TABLE IF NOT EXISTS help_requests (
+      request_id TEXT PRIMARY KEY,
+      question TEXT NOT NULL,
+      context_summary TEXT NOT NULL,
+      tags_json TEXT NOT NULL,
+      urgency TEXT NOT NULL,
+      constraints TEXT,
+      author_pubkey TEXT NOT NULL,
+      signature TEXT NOT NULL,
+      timestamp INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_help_requests_expires ON help_requests(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_help_requests_timestamp ON help_requests(timestamp);
+
+    CREATE TABLE IF NOT EXISTS help_answers (
+      answer_id TEXT PRIMARY KEY,
+      request_id TEXT NOT NULL,
+      answer TEXT NOT NULL,
+      confidence TEXT NOT NULL,
+      artifacts_json TEXT NOT NULL,
+      related_cid TEXT,
+      author_pubkey TEXT NOT NULL,
+      signature TEXT NOT NULL,
+      timestamp INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_help_answers_request ON help_answers(request_id);
+    CREATE INDEX IF NOT EXISTS idx_help_answers_expires ON help_answers(expires_at);
   `);
     console.log('[DB] Local ledger initialized with TTL support at', dbPath);
     return db;
@@ -70,12 +111,62 @@ export async function runGarbageCollection() {
     const now = Date.now();
     const deletedIndexes = await database.run(`DELETE FROM global_index WHERE expires_at < ?`, now);
     const deletedChunks = await database.run(`DELETE FROM local_chunks WHERE expires_at < ?`, now);
+    await database.run(`DELETE FROM help_requests WHERE expires_at < ?`, now);
+    await database.run(`DELETE FROM help_answers WHERE expires_at < ?`, now);
     if (deletedIndexes.changes && deletedIndexes.changes > 0) {
         console.log(`[GC] Cleaned up ${deletedIndexes.changes} expired indexes.`);
     }
     if (deletedChunks.changes && deletedChunks.changes > 0) {
         console.log(`[GC] Cleaned up ${deletedChunks.changes} expired content chunks.`);
     }
+}
+export async function insertHelpRequest(payload) {
+    const database = await getDb();
+    await database.run(`INSERT OR IGNORE INTO help_requests (request_id, question, context_summary, tags_json, urgency, constraints, author_pubkey, signature, timestamp, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+        payload.request_id,
+        payload.question,
+        payload.context_summary,
+        JSON.stringify(payload.tags ?? []),
+        payload.urgency,
+        payload.constraints ?? null,
+        payload.author_pubkey,
+        payload.sig ?? payload.signature,
+        payload.timestamp,
+        payload.expires_at
+    ]);
+}
+export async function insertHelpAnswer(payload) {
+    const database = await getDb();
+    await database.run(`INSERT OR IGNORE INTO help_answers (answer_id, request_id, answer, confidence, artifacts_json, related_cid, author_pubkey, signature, timestamp, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+        payload.answer_id,
+        payload.request_id,
+        payload.answer,
+        payload.confidence,
+        JSON.stringify(payload.artifacts ?? []),
+        payload.related_cid ?? null,
+        payload.author_pubkey,
+        payload.sig ?? payload.signature,
+        payload.timestamp,
+        payload.expires_at
+    ]);
+}
+export async function listHelpRequests(limit = 20) {
+    const database = await getDb();
+    return database.all(`SELECT * FROM help_requests WHERE expires_at > ? ORDER BY timestamp DESC LIMIT ?`, Date.now(), limit);
+}
+export async function listHelpAnswers(requestId, limit = 20) {
+    const database = await getDb();
+    if (requestId && requestId.length > 0) {
+        return database.all(`SELECT * FROM help_answers WHERE request_id = ? AND expires_at > ? ORDER BY timestamp DESC LIMIT ?`, requestId, Date.now(), limit);
+    }
+    return database.all(`SELECT * FROM help_answers WHERE expires_at > ? ORDER BY timestamp DESC LIMIT ?`, Date.now(), limit);
+}
+export async function listRecentBroadcasts(limit = 20) {
+    const database = await getDb();
+    return database.all(`SELECT cid, title, author_pubkey, status, related_cid, artifacts_json, timestamp, expires_at
+     FROM global_index WHERE expires_at > ? ORDER BY timestamp DESC LIMIT ?`, Date.now(), limit);
 }
 /**
  * Deterministic Hash-based Similarity Search
