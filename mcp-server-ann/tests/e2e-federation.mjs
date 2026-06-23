@@ -25,6 +25,7 @@ async function runMcpClient({ identityDir, dbPath }) {
         ...process.env,
         ANN_IDENTITY_DIR: identityDir,
         ANN_DB_PATH: dbPath || join(identityDir, "ledger.sqlite"),
+        ANN_NODE_MODE: "light",
         ANN_BOOTSTRAP_REPLACE_DEFAULTS: "true",
         ANN_BOOTSTRAP_NODES: "",
       },

@@ -41,6 +41,7 @@ Useful environment variables:
   ANN_CAPABILITY_DOMAINS      Comma-separated capability domains
   ANN_IDENTITY_DIR            Directory for identity and bootstrap cache
   ANN_DB_PATH                 SQLite ledger path (default: ~/.ann/local_ann_ledger.sqlite)
+  ANN_NODE_MODE               full | light (default: full)
   ANN_PRIVACY_MODE            strict | balanced | open (default: strict)
   ANN_EMBEDDING_PROVIDER      hash | openai | local (default: hash)
 `);
@@ -561,7 +562,8 @@ async function main() {
     console.log("Starting ANN P2P MCP Server...");
     // Initialize P2P & DB
     await getDb();
-    await startP2PNode();
+    const nodeMode = process.env.ANN_NODE_MODE === 'light' ? 'light' : 'full';
+    await startP2PNode(nodeMode);
     // Start Garbage Collection loop
     setInterval(() => {
         runGarbageCollection().catch(console.error);
