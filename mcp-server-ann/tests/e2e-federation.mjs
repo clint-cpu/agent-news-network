@@ -4,7 +4,7 @@
  * Run: cd mcp-server-ann && node tests/e2e-federation.mjs
  */
 import { spawn } from "node:child_process";
-import { rm, mkdtemp } from "node:fs/promises";
+import { readFile, rm, mkdtemp } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "../..");
 const MCP_DIR = join(ROOT, "mcp-server-ann");
+const PACKAGE_JSON = JSON.parse(await readFile(join(MCP_DIR, "package.json"), "utf8"));
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -23,7 +24,7 @@ async function runMcpClient({ identityDir, dbPath }) {
       env: {
         ...process.env,
         ANN_IDENTITY_DIR: identityDir,
-        // Override SQLite path via cwd; db.ts uses process.cwd()
+        ANN_DB_PATH: dbPath || join(identityDir, "ledger.sqlite"),
       },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -72,7 +73,7 @@ async function runMcpClient({ identityDir, dbPath }) {
   });
 }
 
-async function runCli(args, { identityDir }) {
+async function runCli(args, { identityDir, dbPath }) {
   return new Promise((resolve, reject) => {
     const serverPath = join(MCP_DIR, "dist", "index.js");
     const child = spawn("node", [serverPath, ...args], {
@@ -80,6 +81,7 @@ async function runCli(args, { identityDir }) {
       env: {
         ...process.env,
         ANN_IDENTITY_DIR: identityDir,
+        ANN_DB_PATH: dbPath || join(identityDir, "ledger.sqlite"),
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -116,6 +118,7 @@ async function main() {
 
   const tmpBase = await mkdtemp(join(tmpdir(), "ann-e2e-"));
   const identityDir = join(tmpBase, "identity");
+  const dbPath = join(tmpBase, "ledger.sqlite");
 
   try {
     // Step 1: Verify dist/index.js exists
@@ -127,32 +130,38 @@ async function main() {
     }
     pass("dist/index.js exists");
 
-    const help = await runCli(["--help"], { identityDir });
+    const help = await runCli(["--help"], { identityDir, dbPath });
     if (!help.output.includes("A peer-to-peer memory layer for AI agents")) {
       throw new Error("--help output missing ANN tagline");
     }
     pass("CLI help works");
 
-    const version = await runCli(["--version"], { identityDir });
-    if (version.output.trim() !== "2.0.0") {
+    const version = await runCli(["--version"], { identityDir, dbPath });
+    if (version.output.trim() !== PACKAGE_JSON.version) {
       throw new Error(`--version returned ${version.output.trim()}`);
     }
     pass("CLI version works");
 
-    const doctor = await runCli(["doctor"], { identityDir });
+    const doctor = await runCli(["doctor"], { identityDir, dbPath });
     if (!doctor.output.includes("Network readiness: ok")) {
       throw new Error("doctor did not report network readiness");
     }
     pass("CLI doctor works");
 
     // Step 2: Start MCP server and list tools
-    const { output, errOutput } = await runMcpClient({ identityDir });
+    const { output, errOutput } = await runMcpClient({ identityDir, dbPath });
     
     if (!output.includes("publish_knowledge")) {
       throw new Error("publish_knowledge tool not found in MCP response");
     }
     if (!output.includes("search_knowledge")) {
       throw new Error("search_knowledge tool not found in MCP response");
+    }
+    if (!output.includes("request_help")) {
+      throw new Error("request_help tool not found in MCP response");
+    }
+    if (!output.includes("answer_help")) {
+      throw new Error("answer_help tool not found in MCP response");
     }
     pass("MCP tools listed correctly");
 
@@ -167,7 +176,6 @@ async function main() {
     pass("Ed25519 identity generated");
 
     // Step 4: Verify SQLite ledger was created
-    const dbPath = join(MCP_DIR, "local_ann_ledger.sqlite");
     try {
       await fs.access(dbPath);
     } catch {
@@ -188,13 +196,6 @@ async function main() {
     }
   } finally {
     await rm(tmpBase, { recursive: true, force: true });
-    // Also clean up the SQLite created in MCP_DIR
-    try {
-      const fs = await import("node:fs/promises");
-      await fs.unlink(join(MCP_DIR, "local_ann_ledger.sqlite"));
-    } catch {
-      /* ignore */
-    }
   }
 }
 
