@@ -72,6 +72,11 @@ function validateSearchKnowledge(args: any) {
 const TOOLS = [
   { name: 'publish_knowledge' },
   { name: 'search_knowledge' },
+  { name: 'request_help' },
+  { name: 'answer_help' },
+  { name: 'list_help_requests' },
+  { name: 'list_help_answers' },
+  { name: 'list_recent_broadcasts' },
 ];
 
 describe('MCP Tools', () => {
@@ -79,6 +84,11 @@ describe('MCP Tools', () => {
     const toolNames = TOOLS.map((t: any) => t.name);
     expect(toolNames).toContain('publish_knowledge');
     expect(toolNames).toContain('search_knowledge');
+    expect(toolNames).toContain('request_help');
+    expect(toolNames).toContain('answer_help');
+    expect(toolNames).toContain('list_help_requests');
+    expect(toolNames).toContain('list_help_answers');
+    expect(toolNames).toContain('list_recent_broadcasts');
   });
 
   it('publish_knowledge should reject empty title', () => {

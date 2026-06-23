@@ -145,6 +145,10 @@ This guarantees that expired content never appears in query results. A periodic 
 10. Phase 3: Update own reputation ledger (event_count++, domain match bonus if applicable)
 ```
 
+The publish path currently generates erasure shards locally but does not store
+those shard bodies in the DHT. DHT persistence is the dual-key content/index
+model above.
+
 ### Search (`search_knowledge` tool)
 
 ```
@@ -176,11 +180,42 @@ This guarantees that expired content never appears in query results. A periodic 
 6. Phase 1: Do NOT write to DHT on gossip receipt — only the original publisher writes to DHT
 ```
 
+### Help Request / Answer
+
+```
+1. request_help validates question, context_summary, tags, urgency, constraints, and ttl
+2. Outbound text is checked by ANN_PRIVACY_MODE before publication
+3. Build kind=2 help request envelope and Ed25519 signature
+4. Publish to ann-help-requests, insert into local SQLite, and best-effort write ann:help:req:{request_id}
+5. answer_help validates request_id, answer, confidence, artifacts, and ttl
+6. Build kind=3 help answer envelope linked to request_id
+7. Publish to ann-help-answers, insert into local SQLite, and best-effort write ann:help:answer:{answer_id}
+8. Receiving nodes verify signatures before inserting help events into local SQLite
+```
+
 ## TTL and Garbage Collection
 
 All published records carry an `expires_at` timestamp (default: now + 30 days). A background timer runs `runGarbageCollection()` every hour, deleting expired rows from `global_index` and `local_chunks` SQLite tables.
 
 DHT TTL is enforced at read time (Phase 4): every `dhtGetContent` and `dhtQueryKeyword` call checks `expires_at` and proactively deletes or skips expired entries. The SQLite GC and DHT read-time enforcement run independently.
+
+## Local State
+
+The SQLite ledger path is:
+
+1. `ANN_DB_PATH` when explicitly configured
+2. Otherwise `ANN_IDENTITY_DIR/local_ann_ledger.sqlite`
+3. Otherwise `~/.ann/local_ann_ledger.sqlite`
+
+This keeps `npx`, MCP clients, and source-tree development from scattering
+ledger files into arbitrary current working directories.
+
+## Diagnostics
+
+`ann doctor` validates identity, SQLite, bootstrap configuration, cache state,
+privacy mode, and embedding provider. `ann doctor --network` additionally starts
+a temporary full node, dials configured bootstrap peers, waits briefly, and
+reports connected peer IDs. This is the recommended public bootstrap smoke test.
 
 ## Signature Scheme
 

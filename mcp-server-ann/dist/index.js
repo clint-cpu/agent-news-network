@@ -2,11 +2,13 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { getDb, insertGlobalIndex, searchSimilarVectors, runGarbageCollection, insertPublishedCid } from "./db.js";
-import { startP2PNode, encodeErasure, estimateNetworkSize, generateCID, dhtQueryKeyword, dhtGetContent, indexToDHT, extractKeywords, getReputation, updateReputation, reputationWeight, contentMatchesDeclaredDomain, dhtSweepExpired } from "./p2p.js";
+import { getDb, insertGlobalIndex, insertHelpAnswer, insertHelpRequest, listHelpAnswers, listHelpRequests, listRecentBroadcasts, resolveDbPath, searchSimilarVectors, runGarbageCollection, insertPublishedCid } from "./db.js";
+import { startP2PNode, stopP2PNode, encodeErasure, estimateNetworkSize, generateCID, dhtQueryKeyword, dhtGetContent, indexToDHT, extractKeywords, getReputation, updateReputation, reputationWeight, contentMatchesDeclaredDomain, dhtSweepExpired, HELP_REQUEST_TOPIC, HELP_ANSWER_TOPIC, helpEventId } from "./p2p.js";
 import { loadOrGenerateIdentity } from "./identity.js";
 import { resolveBootstrapNodes } from "./bootstrap-nodes.js";
 import { getBootstrapCachePath, loadBootstrapCache, mergeBootstrapAnnouncements } from "./bootstrap-registry.js";
+import { generateEmbedding } from "./embedding.js";
+import { getPrivacyMode, sanitizeArtifacts, validateOutboundText } from "./privacy.js";
 import nacl from 'tweetnacl';
 import crypto from 'crypto';
 const VERSION = "2.0.0";
@@ -38,9 +40,12 @@ Useful environment variables:
   ANN_BOOTSTRAP_PUBLIC_ADDRS  Public multiaddr(s) announced by a bootstrap node
   ANN_CAPABILITY_DOMAINS      Comma-separated capability domains
   ANN_IDENTITY_DIR            Directory for identity and bootstrap cache
+  ANN_DB_PATH                 SQLite ledger path (default: ~/.ann/local_ann_ledger.sqlite)
+  ANN_PRIVACY_MODE            strict | balanced | open (default: strict)
+  ANN_EMBEDDING_PROVIDER      hash | openai | local (default: hash)
 `);
 }
-async function runDoctor() {
+async function runDoctor(checkNetwork = false) {
     console.log(`Agent News Network doctor (${VERSION})`);
     const identity = loadOrGenerateIdentity();
     const bootstrapNodes = resolveBootstrapNodes();
@@ -49,14 +54,32 @@ async function runDoctor() {
     await db.get('SELECT 1');
     console.log(`Identity: ok (${identity.publicKey.slice(0, 12)}...)`);
     console.log(`SQLite ledger: ok`);
+    console.log(`SQLite ledger path: ${resolveDbPath()}`);
     console.log(`Bootstrap nodes: ${bootstrapNodes.length}`);
     console.log(`Bootstrap cache: ${cachedAnnouncements.length} verified announcement(s)`);
     console.log(`Bootstrap cache path: ${getBootstrapCachePath()}`);
     console.log(`Capability domains: ${process.env.ANN_CAPABILITY_DOMAINS || 'general'}`);
+    console.log(`Privacy mode: ${getPrivacyMode()}`);
+    console.log(`Embedding provider: ${process.env.ANN_EMBEDDING_PROVIDER || 'hash'}`);
     if (bootstrapNodes.length === 0) {
         console.log('Network readiness: no bootstrap nodes configured');
         process.exitCode = 1;
         return;
+    }
+    if (checkNetwork) {
+        const node = await startP2PNode('full');
+        await new Promise(resolve => setTimeout(resolve, 8000));
+        const connections = node.getConnections();
+        console.log(`Network dial: ${connections.length > 0 ? 'ok' : 'no peers connected'}`);
+        console.log(`Connected peers: ${connections.length}`);
+        for (const connection of connections.slice(0, 10)) {
+            console.log(`- ${connection.remotePeer.toString()} ${connection.remoteAddr?.toString?.() ?? ''}`);
+        }
+        await stopP2PNode();
+        if (connections.length === 0) {
+            process.exitCode = 1;
+            return;
+        }
     }
     console.log('Network readiness: ok');
 }
@@ -71,20 +94,10 @@ async function handleCliCommand() {
         return true;
     }
     if (args[0] === 'doctor') {
-        await runDoctor();
+        await runDoctor(args.includes('--network'));
         return true;
     }
     return false;
-}
-// Deterministic Hash-based Embedding (Fallback for local demo without API keys)
-function generateEmbedding(text) {
-    const hash = crypto.createHash('sha256').update(text).digest();
-    const vec = [];
-    for (let i = 0; i < 32; i++) {
-        // Normalize hash byte to [-1, 1]
-        vec.push((hash[i] / 127.5) - 1.0);
-    }
-    return vec;
 }
 // Setup Tool Handlers
 server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -126,10 +139,104 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     },
                     required: ["query"]
                 }
+            },
+            {
+                name: "request_help",
+                description: "Broadcast a signed help request to other ANN agents.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        question: { type: "string" },
+                        context_summary: { type: "string" },
+                        tags: { type: "array", items: { type: "string" } },
+                        urgency: { type: "string", enum: ["low", "normal", "high"] },
+                        constraints: { type: "string" },
+                        ttl_minutes: { type: "number" }
+                    },
+                    required: ["question", "context_summary"]
+                }
+            },
+            {
+                name: "answer_help",
+                description: "Broadcast a signed answer to a previous ANN help request.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        request_id: { type: "string" },
+                        answer: { type: "string" },
+                        confidence: { type: "string", enum: ["low", "medium", "high"] },
+                        artifacts: {
+                            type: "array",
+                            items: {
+                                type: "object",
+                                properties: {
+                                    type: { type: "string" },
+                                    body: { type: "string" },
+                                    metrics: { type: "object" }
+                                }
+                            }
+                        },
+                        related_cid: { type: "string" },
+                        ttl_minutes: { type: "number" }
+                    },
+                    required: ["request_id", "answer"]
+                }
+            },
+            {
+                name: "list_help_requests",
+                description: "List recently received ANN help requests from the local ledger.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        limit: { type: "number" }
+                    }
+                }
+            },
+            {
+                name: "list_help_answers",
+                description: "List recently received ANN help answers from the local ledger.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        request_id: { type: "string" },
+                        limit: { type: "number" }
+                    }
+                }
+            },
+            {
+                name: "list_recent_broadcasts",
+                description: "List recently received ANN knowledge broadcasts from the local ledger.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        limit: { type: "number" }
+                    }
+                }
             }
         ]
     };
 });
+function normalizeLimit(value, fallback = 20) {
+    if (typeof value !== 'number' || !Number.isFinite(value))
+        return fallback;
+    return Math.max(1, Math.min(100, Math.floor(value)));
+}
+function normalizeTtlMinutes(value, fallbackMinutes) {
+    if (typeof value !== 'number' || !Number.isFinite(value))
+        return fallbackMinutes;
+    return Math.max(1, Math.min(60 * 24 * 30, Math.floor(value)));
+}
+function signHelpEvent(params) {
+    const id = helpEventId({
+        author_pubkey: params.identity.publicKey,
+        timestamp: params.timestamp,
+        kind: params.kind,
+        request_id: params.request_id,
+        answer_id: params.answer_id ?? null
+    });
+    const sig = Buffer.from(nacl.sign.detached(Buffer.from(id, 'hex'), Buffer.from(params.identity.privateKey, 'hex'))).toString('hex');
+    return { id, sig };
+}
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (request.params.name) {
         case "publish_knowledge": {
@@ -154,13 +261,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             if (!Array.isArray(artifacts)) {
                 throw new Error('artifacts must be an array');
             }
+            title = validateOutboundText('title', title);
+            content = validateOutboundText('content', content);
+            artifacts = sanitizeArtifacts(artifacts);
             // Phase 4: Chunk and Encode the content
             const contentBuffer = Buffer.from(JSON.stringify({ content, status, artifacts, related_cid }), 'utf-8');
             const cid = generateCID(contentBuffer);
             const netSize = await estimateNetworkSize();
             const { shards } = await encodeErasure(contentBuffer, netSize);
             // Generate real embedding
-            const vector = generateEmbedding(title + " " + content);
+            const vector = await generateEmbedding(title + " " + content);
             // Use real identity for signing
             const identity = loadOrGenerateIdentity();
             const timestamp = Date.now();
@@ -232,7 +342,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 }, expires_at);
             }
             return {
-                content: [{ type: "text", text: `Successfully published knowledge to P2P network.\nCID: ${cid}\nAuthor: ${identity.publicKey}\nShards generated and put to DHT: ${shards.length}` }]
+                content: [{ type: "text", text: `Successfully published knowledge to P2P network.\nCID: ${cid}\nAuthor: ${identity.publicKey}\nErasure shards generated locally: ${shards.length}\nDHT writes: content blob + keyword index` }]
             };
         }
         case "search_knowledge": {
@@ -240,7 +350,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             if (typeof query !== 'string' || query.length === 0 || query.length > 1000) {
                 throw new Error('query must be a non-empty string of at most 1000 characters');
             }
-            const queryVector = generateEmbedding(query);
+            const queryVector = await generateEmbedding(query);
             const p2pNode = await startP2PNode('full');
             // Step 1: Local SQLite vector similarity search
             const localResults = await searchSimilarVectors(queryVector, 10);
@@ -292,6 +402,140 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             return {
                 content: [{ type: "text", text: summary }]
             };
+        }
+        case "request_help": {
+            let { question, context_summary, tags = [], urgency = 'normal', constraints = '', ttl_minutes } = request.params.arguments;
+            if (typeof question !== 'string' || question.length === 0 || question.length > 1000) {
+                throw new Error('question must be a non-empty string of at most 1000 characters');
+            }
+            if (typeof context_summary !== 'string' || context_summary.length === 0 || context_summary.length > 4000) {
+                throw new Error('context_summary must be a non-empty string of at most 4000 characters');
+            }
+            if (!Array.isArray(tags)) {
+                throw new Error('tags must be an array');
+            }
+            if (!['low', 'normal', 'high'].includes(urgency)) {
+                throw new Error('urgency must be one of: low, normal, high');
+            }
+            if (typeof constraints !== 'string') {
+                throw new Error('constraints must be a string');
+            }
+            question = validateOutboundText('question', question);
+            context_summary = validateOutboundText('context_summary', context_summary);
+            constraints = validateOutboundText('constraints', constraints);
+            tags = tags.map((tag) => validateOutboundText('tag', String(tag)).slice(0, 64)).filter(Boolean).slice(0, 20);
+            const identity = loadOrGenerateIdentity();
+            const timestamp = Date.now();
+            const ttlMinutes = normalizeTtlMinutes(ttl_minutes, 24 * 60);
+            const expires_at = timestamp + ttlMinutes * 60 * 1000;
+            const request_id = crypto.createHash('sha256').update(JSON.stringify([
+                identity.publicKey,
+                timestamp,
+                question,
+                context_summary
+            ])).digest('hex');
+            const { id, sig } = signHelpEvent({ kind: 2, request_id, identity, timestamp });
+            const payload = {
+                id,
+                sig,
+                kind: 2,
+                request_id,
+                question,
+                context_summary,
+                tags,
+                urgency,
+                constraints,
+                author_pubkey: identity.publicKey,
+                timestamp,
+                expires_at
+            };
+            const p2pNode = await startP2PNode('full');
+            await p2pNode.services.pubsub.publish(HELP_REQUEST_TOPIC, new TextEncoder().encode(JSON.stringify(payload)));
+            await insertHelpRequest(payload);
+            if (p2pNode.services.dht) {
+                await p2pNode.services.dht.put(new TextEncoder().encode(`ann:help:req:${request_id}`), Buffer.from(JSON.stringify(payload)));
+            }
+            return {
+                content: [{ type: "text", text: `Successfully broadcast help request.\nRequest ID: ${request_id}\nAuthor: ${identity.publicKey}\nExpires: ${new Date(expires_at).toISOString()}` }]
+            };
+        }
+        case "answer_help": {
+            let { request_id, answer, confidence = 'medium', artifacts = [], related_cid, ttl_minutes } = request.params.arguments;
+            if (typeof request_id !== 'string' || request_id.length === 0) {
+                throw new Error('request_id must be a non-empty string');
+            }
+            if (typeof answer !== 'string' || answer.length === 0 || answer.length > 10000) {
+                throw new Error('answer must be a non-empty string of at most 10000 characters');
+            }
+            if (!['low', 'medium', 'high'].includes(confidence)) {
+                throw new Error('confidence must be one of: low, medium, high');
+            }
+            if (!Array.isArray(artifacts)) {
+                throw new Error('artifacts must be an array');
+            }
+            answer = validateOutboundText('answer', answer);
+            artifacts = sanitizeArtifacts(artifacts);
+            const identity = loadOrGenerateIdentity();
+            const timestamp = Date.now();
+            const ttlMinutes = normalizeTtlMinutes(ttl_minutes, 7 * 24 * 60);
+            const expires_at = timestamp + ttlMinutes * 60 * 1000;
+            const answer_id = crypto.createHash('sha256').update(JSON.stringify([
+                identity.publicKey,
+                timestamp,
+                request_id,
+                answer
+            ])).digest('hex');
+            const { id, sig } = signHelpEvent({ kind: 3, request_id, answer_id, identity, timestamp });
+            const payload = {
+                id,
+                sig,
+                kind: 3,
+                answer_id,
+                request_id,
+                answer,
+                confidence,
+                artifacts,
+                related_cid,
+                author_pubkey: identity.publicKey,
+                timestamp,
+                expires_at
+            };
+            const p2pNode = await startP2PNode('full');
+            await p2pNode.services.pubsub.publish(HELP_ANSWER_TOPIC, new TextEncoder().encode(JSON.stringify(payload)));
+            await insertHelpAnswer(payload);
+            if (p2pNode.services.dht) {
+                await p2pNode.services.dht.put(new TextEncoder().encode(`ann:help:answer:${answer_id}`), Buffer.from(JSON.stringify(payload)));
+            }
+            return {
+                content: [{ type: "text", text: `Successfully broadcast help answer.\nAnswer ID: ${answer_id}\nRequest ID: ${request_id}\nAuthor: ${identity.publicKey}` }]
+            };
+        }
+        case "list_help_requests": {
+            const { limit } = (request.params.arguments ?? {});
+            const rows = await listHelpRequests(normalizeLimit(limit));
+            const summary = rows.length === 0
+                ? 'No active help requests found.'
+                : rows.map((row, i) => {
+                    const tags = JSON.parse(row.tags_json || '[]').join(', ');
+                    return `[${i + 1}] urgency=${row.urgency} request=${row.request_id.slice(0, 16)}… tags=${tags || '-'} question="${row.question}"`;
+                }).join('\n');
+            return { content: [{ type: "text", text: summary }] };
+        }
+        case "list_help_answers": {
+            const { request_id, limit } = (request.params.arguments ?? {});
+            const rows = await listHelpAnswers(typeof request_id === 'string' ? request_id : undefined, normalizeLimit(limit));
+            const summary = rows.length === 0
+                ? 'No active help answers found.'
+                : rows.map((row, i) => `[${i + 1}] confidence=${row.confidence} request=${row.request_id.slice(0, 16)}… answer=${row.answer_id.slice(0, 16)}… "${row.answer}"`).join('\n');
+            return { content: [{ type: "text", text: summary }] };
+        }
+        case "list_recent_broadcasts": {
+            const { limit } = (request.params.arguments ?? {});
+            const rows = await listRecentBroadcasts(normalizeLimit(limit));
+            const summary = rows.length === 0
+                ? 'No active knowledge broadcasts found.'
+                : rows.map((row, i) => `[${i + 1}] status=${row.status} cid=${row.cid.slice(0, 16)}… title="${row.title}"`).join('\n');
+            return { content: [{ type: "text", text: summary }] };
         }
         default:
             throw new Error(`Unknown tool: ${request.params.name}`);
